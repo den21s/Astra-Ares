@@ -1,3 +1,5 @@
+> **This fork:** adds Sol 6.1 Ares and an evaluator using an existing Responses account. See [integration, limitations and verification](docs/cch-integration.md). Stock Codex is kept separate; net savings must be measured including evaluator overhead.
+
 > [!IMPORTANT]
 > **Experimental reference implementation.** Astra-Ares has a straightforward setup, but runs a separate, patched version of Codex CLI. It is primarily a reference for bringing adaptive reasoning effort into your own agent systems; it is still an early preview for everyday development.
 >

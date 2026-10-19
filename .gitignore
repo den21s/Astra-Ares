@@ -9,3 +9,5 @@ config.local.json
 .DS_Store
 *.log
 *.tgz
+
+__pycache__/

@@ -8,6 +8,7 @@ for (const [name, model] of [
   ["session"],
   ["selection", "gpt-6-astra"],
   ["selection", "gpt-6-sol"],
+  ["selection", "gpt-6.1-sol"],
   ["selection", "gpt-6-luna"],
   ...(process.platform === "darwin" ? [["desktop"]] : []),
 ]) {

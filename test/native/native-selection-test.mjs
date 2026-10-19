@@ -17,10 +17,12 @@ const baseModel = process.argv[4] ?? "gpt-6-astra";
 const alias = {
   "gpt-6-astra": "Astra-Jev",
   "gpt-6-sol": "Sol-Jev",
+  "gpt-6.1-sol": "Sol-6.1-Jev",
   "gpt-6-luna": "Luna-Jev",
 }[baseModel];
 assert(alias, "Unknown fixture model");
-const displayName = alias.replace("-Jev", " Ares");
+const displayName =
+  baseModel === "gpt-6.1-sol" ? "Sol 6.1 Ares" : alias.replace("-Jev", " Ares");
 mkdirSync(evidence, { recursive: true });
 const socketDir = mkdtempSync(join(tmpdir(), "cj-select-"));
 const home = join(evidence, "home");
@@ -258,6 +260,10 @@ try {
   assert.equal(resumed.model, alias);
   assert.equal((await run(id, "resumed")).status, "completed");
   assert.equal(states.length, 3);
+  assert(
+    !JSON.stringify(requests.at(-1).body.input).includes("<model_switch>"),
+    "Adaptive alias resume must not inject a false model switch",
+  );
   assert.equal((await run(id, "live-switch")).status, "completed");
   assert.equal(states.length, 5);
   const live = requests.filter((r) => r.phase === "live-switch");

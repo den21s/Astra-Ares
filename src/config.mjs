@@ -17,12 +17,18 @@ export function evaluatorOptions({
   decisionModel,
   contextTokenLimit,
 }) {
-  if (!["vercel", "typesafe", "openrouter", "local"].includes(provider))
-    throw new Error("provider must be vercel, typesafe, openrouter or local");
+  if (
+    !["vercel", "typesafe", "openrouter", "local", "responses"].includes(
+      provider,
+    )
+  )
+    throw new Error(
+      "provider must be vercel, typesafe, openrouter, local or responses",
+    );
   if (decisionModel !== undefined) {
-    if (!["local", "openrouter"].includes(provider))
+    if (!["local", "openrouter", "responses"].includes(provider))
       throw new Error(
-        "decisionModel is only supported for local or openrouter",
+        "decisionModel is only supported for local, openrouter or responses",
       );
     if (
       typeof decisionModel !== "string" ||
@@ -33,7 +39,7 @@ export function evaluatorOptions({
         "decisionModel must be a nonempty model ID without whitespace",
       );
   }
-  if (provider === "local") {
+  if (provider === "local" || provider === "responses") {
     if (!decisionModel)
       throw new Error("local requires an explicit decisionModel");
     if (typeof baseUrl !== "string" || /\s/.test(baseUrl))
@@ -58,10 +64,10 @@ export function evaluatorOptions({
       );
     baseUrl = url.href.replace(/\/+$/, "");
   } else if (baseUrl !== undefined) {
-    throw new Error("baseUrl is only supported for the local provider");
+    throw new Error("baseUrl is only supported for local or responses");
   }
   const custom =
-    provider === "local" ||
+    ["local", "responses"].includes(provider) ||
     (provider === "openrouter" &&
       decisionModel !== undefined &&
       decisionModel !== "typesafe/jev-1.13");
@@ -113,10 +119,13 @@ export function validateConfig(value) {
     "baseUrl",
     "decisionModel",
     "contextTokenLimit",
+    "codexAuthFile",
   ];
   for (const key of Object.keys(value))
     if (!allowed.includes(key)) throw new Error(`Unknown config field: ${key}`);
   const evaluator = evaluatorOptions(value);
+  if (value.codexAuthFile && value.provider !== "responses")
+    throw new Error("codexAuthFile is only supported for responses");
   if (![1, 2, 5, 10].includes(value.maxLeaseSteps ?? 10))
     throw new Error("maxLeaseSteps must be 1, 2, 5 or 10");
   for (const key of allowed.filter(
@@ -129,12 +138,14 @@ export function validateConfig(value) {
       throw new Error(`${key} must be a nonempty string`);
   }
   if (
-    ["apiKey", "apiKeyEnv", "apiKeyFile"].filter(
+    ["apiKey", "apiKeyEnv", "apiKeyFile", "codexAuthFile"].filter(
       (key) => value[key] !== undefined,
     ).length > 1
   )
-    throw new Error("Choose one of apiKey, apiKeyEnv or apiKeyFile");
-  for (const key of ["codexHome", "codexBinary", "apiKeyFile"])
+    throw new Error(
+      "Choose one of apiKey, apiKeyEnv, apiKeyFile or codexAuthFile",
+    );
+  for (const key of ["codexHome", "codexBinary", "apiKeyFile", "codexAuthFile"])
     if (value[key] && !isAbsolute(value[key]))
       throw new Error(`${key} must be an absolute path`);
   return { ...value, ...evaluator, maxLeaseSteps: value.maxLeaseSteps ?? 10 };
@@ -155,6 +166,17 @@ export function readConfig(file) {
   return validateConfig(data);
 }
 export function readKey(config, env = process.env) {
+  if (config.codexAuthFile) {
+    try {
+      const key = JSON.parse(
+        readFileSync(config.codexAuthFile, "utf8"),
+      ).OPENAI_API_KEY;
+      if (typeof key === "string" && key && !/\s/.test(key)) return key;
+    } catch {
+      /* Credentials and parser errors must never be echoed. */
+    }
+    throw new Error("Codex auth file requires a valid API-key login");
+  }
   const variable =
     config.apiKeyEnv ||
     {
@@ -162,6 +184,7 @@ export function readKey(config, env = process.env) {
       typesafe: "TYPESAFE_API_KEY",
       openrouter: "OPENROUTER_API_KEY",
       local: "ARES_LOCAL_API_KEY",
+      responses: "OPENAI_API_KEY",
     }[config.provider];
   const key = config.apiKeyFile
     ? readFileSync(config.apiKeyFile, "utf8").trim()

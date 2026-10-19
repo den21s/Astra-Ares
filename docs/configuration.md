@@ -102,3 +102,7 @@ Choose only one of `apiKey`, `apiKeyEnv`, and `apiKeyFile`. With none set, the p
 Decision logs contain request sizes, provider codes and request IDs, retry delays, usage, latency, and native application confirmations. They omit the API key and full task/history. Codex itself retains its normal native conversation history in its profile.
 
 `evaluation_requested` records an evaluation attempt. `decision` with `native_step_context_captured` records successful native application. `reused: true` means the current lease was reused without another Jev request. Errors stop the turn explicitly and are described in [troubleshooting](troubleshooting.md).
+
+## Responses evaluator (this fork)
+
+The `responses` provider uses an explicit Responses endpoint/model and optionally `codexAuthFile` to reference an existing Codex API-key login. See [existing-account integration](cch-integration.md) for setup, credential lifetime, routing and validation.

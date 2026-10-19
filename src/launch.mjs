@@ -1,3 +1,4 @@
+import { ResponsesEvaluator } from "./responses-evaluator.mjs";
 import {
   appendFileSync,
   existsSync,
@@ -96,7 +97,9 @@ export async function launch(args, config = loadConfig(), options = {}) {
   let evaluator;
   const jev = {
     decide(state, options) {
-      evaluator ??= new Jev({
+      evaluator ??= new (
+        config.provider === "responses" ? ResponsesEvaluator : Jev
+      )({
         apiKey: readKey(config),
         provider: config.provider,
         baseUrl: config.baseUrl,

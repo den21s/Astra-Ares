@@ -14551,7 +14551,7 @@ diff --git a/codex-rs/protocol/src/openai_models.rs b/codex-rs/protocol/src/open
 index 79f268ce3bad5a930e338e11374cd3b13807e95f..e83a025f958a945549e579c63e727b15513bc2b3 100644
 --- a/codex-rs/protocol/src/openai_models.rs
 +++ b/codex-rs/protocol/src/openai_models.rs
-@@ -53,6 +53,28 @@ pub use guardian_v2::GuardianV2TranscriptModelConfig;
+@@ -53,6 +53,29 @@ pub use guardian_v2::GuardianV2TranscriptModelConfig;
  pub const MODEL_SPECIALTY_CYBER: &str = "cyber";
  pub const SPEED_TIER_FAST: &str = "fast";
  
@@ -14559,10 +14559,11 @@ index 79f268ce3bad5a930e338e11374cd3b13807e95f..e83a025f958a945549e579c63e727b15
 +pub const ASTRA_JEV_MODEL: &str = "Astra-Jev";
 +pub const ASTRA_JEV_BASE_MODEL: &str = "gpt-6-astra";
 +// Stable selection IDs, provider model IDs, and user-facing names.
-+pub const JEV_MODELS: [(&str, &str, &str); 3] = [
++pub const JEV_MODELS: [(&str, &str, &str); 4] = [
 +    (ASTRA_JEV_MODEL, ASTRA_JEV_BASE_MODEL, "Astra Ares"),
 +    ("Luna-Jev", "gpt-6-luna", "Luna Ares"),
 +    ("Sol-Jev", "gpt-6-sol", "Sol Ares"),
++    ("Sol-6.1-Jev", "gpt-6.1-sol", "Sol 6.1 Ares"),
 +];
 +
 +pub fn jev_base_model(selection: &str) -> Option<&'static str> {
@@ -15115,3 +15116,37 @@ diff --git a/codex-rs/core/src/config/edit.rs b/codex-rs/core/src/config/edit.rs
          format!(
              "failed to persist config at {}",
              write_paths.write_path.display()
+diff --git a/codex-rs/core/src/context/world_state/model.rs b/codex-rs/core/src/context/world_state/model.rs
+--- a/codex-rs/core/src/context/world_state/model.rs
++++ b/codex-rs/core/src/context/world_state/model.rs
+@@ -2,6 +2,7 @@
+ use super::WorldStateSection;
+ use crate::context::ContextualUserFragment;
+ use crate::context::ModelSwitchInstructions;
++use codex_protocol::openai_models::jev_base_model;
+ 
+ /// Model identity and the instructions needed when that identity changes.
+ #[derive(Clone, Debug)]
+@@ -14,8 +15,9 @@
+ impl ModelInstructionsState {
+     pub(crate) fn new(model: &str, previous_model: Option<&str>, instructions: String) -> Self {
+         Self {
+-            model: model.to_string(),
+-            previous_model: previous_model.map(str::to_string),
++            model: jev_base_model(model).unwrap_or(model).to_string(),
++            previous_model: previous_model
++                .map(|model| jev_base_model(model).unwrap_or(model).to_string()),
+             instructions,
+         }
+     }
+@@ -46,7 +48,9 @@
+         previous: PreviousSectionState<'_, Self::Snapshot>,
+     ) -> Option<Box<dyn ContextualUserFragment>> {
+         let model_changed = match previous {
+-            PreviousSectionState::Known(previous) => previous != &self.model,
++            PreviousSectionState::Known(previous) => {
++                jev_base_model(previous).unwrap_or(previous) != self.model
++            }
+             PreviousSectionState::Unknown | PreviousSectionState::Absent => self
+                 .previous_model
+                 .as_deref()

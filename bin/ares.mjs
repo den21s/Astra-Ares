@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { ResponsesEvaluator } from "../src/responses-evaluator.mjs";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Writable } from "node:stream";
@@ -16,8 +17,9 @@ import { Jev } from "../src/jev.mjs";
 import { buildCodex, isCurrentManagedBuild } from "../scripts/build-codex.mjs";
 const help = `Astra-Ares — Adaptive Reasoning Effort Selection
 
-ares setup [--binary /path/to/patched/codex] [--provider vercel|typesafe|openrouter|local]
-ares configure [--provider vercel|typesafe|openrouter|local] [--key-stdin]
+ares setup [--binary /path/to/patched/codex] [--provider vercel|typesafe|openrouter|local|responses]
+ares configure [--provider vercel|typesafe|openrouter|local|responses] [--key-stdin]
+  [--codex-auth-file /absolute/path/to/auth.json]
   [--base-url http://127.0.0.1:8890] [--decision-model model-id] [--context-token-limit 7000]
 ares doctor [--probe]
 ares config-path
@@ -49,6 +51,7 @@ function parse(args) {
         "--decision-model",
         "--context-token-limit",
         "--codex-home",
+        "--codex-auth-file",
         "--app",
       ].includes(arg) &&
       args[0] &&
@@ -61,7 +64,7 @@ function parse(args) {
 }
 function applyEvaluatorOptions(config, options) {
   const clearKey = () => {
-    for (const field of ["apiKey", "apiKeyEnv", "apiKeyFile"])
+    for (const field of ["apiKey", "apiKeyEnv", "apiKeyFile", "codexAuthFile"])
       delete config[field];
   };
   if (options.provider && options.provider !== config.provider) {
@@ -82,6 +85,7 @@ function applyEvaluatorOptions(config, options) {
     delete config.contextTokenLimit;
   for (const [option, field] of [
     ["base-url", "baseUrl"],
+    ["codex-auth-file", "codexAuthFile"],
     ["decision-model", "decisionModel"],
   ]) {
     if (options[option] !== undefined) config[field] = options[option];
@@ -104,6 +108,7 @@ try {
       "context-token-limit",
     ],
     configure: [
+      "codex-auth-file",
       "provider",
       "key-stdin",
       "base-url",
@@ -192,41 +197,53 @@ try {
       : { provider: "openrouter", maxLeaseSteps: 10 };
     applyEvaluatorOptions(config, options);
     validateConfig(config);
-    let key;
-    if (options["key-stdin"]) key = readFileSync(0, "utf8").trim();
-    else {
-      if (!process.stdin.isTTY)
-        throw new Error("Use --key-stdin for a piped key");
-      process.stderr.write(
-        config.provider === "local"
-          ? "Local evaluator API key (hidden; Enter for no key): "
-          : "Jev API key (hidden): ",
-      );
-      const output = new Writable({
-        write(_chunk, _encoding, done) {
-          done();
-        },
-      });
-      const rl = createInterface({
-        input: process.stdin,
-        output,
-        terminal: true,
-      });
-      try {
-        key = (await rl.question("")).trim();
-      } finally {
-        rl.close();
-        process.stderr.write("\n");
+    if (options["codex-auth-file"]) {
+      if (options["key-stdin"])
+        throw new Error("Choose a Codex auth reference or a piped key");
+      for (const field of ["apiKey", "apiKeyFile", "apiKeyEnv"])
+        delete config[field];
+      validateConfig(config);
+      readKey(config);
+      saveConfig(paths.config, config);
+      console.log(`Codex credential reference saved in ${paths.config}`);
+    } else {
+      let key;
+      if (options["key-stdin"]) key = readFileSync(0, "utf8").trim();
+      else {
+        if (!process.stdin.isTTY)
+          throw new Error("Use --key-stdin for a piped key");
+        process.stderr.write(
+          config.provider === "local"
+            ? "Local evaluator API key (hidden; Enter for no key): "
+            : "Jev API key (hidden): ",
+        );
+        const output = new Writable({
+          write(_chunk, _encoding, done) {
+            done();
+          },
+        });
+        const rl = createInterface({
+          input: process.stdin,
+          output,
+          terminal: true,
+        });
+        try {
+          key = (await rl.question("")).trim();
+        } finally {
+          rl.close();
+          process.stderr.write("\n");
+        }
       }
+      if ((!key && config.provider !== "local") || /\s/.test(key))
+        throw new Error("Invalid API key");
+      delete config.codexAuthFile;
+      delete config.apiKeyFile;
+      delete config.apiKeyEnv;
+      if (key) config.apiKey = key;
+      else delete config.apiKey;
+      saveConfig(paths.config, config);
+      console.log(`Configuration saved privately in ${paths.config}`);
     }
-    if ((!key && config.provider !== "local") || /\s/.test(key))
-      throw new Error("Invalid API key");
-    delete config.apiKeyFile;
-    delete config.apiKeyEnv;
-    if (key) config.apiKey = key;
-    else delete config.apiKey;
-    saveConfig(paths.config, config);
-    console.log(`Configuration saved privately in ${paths.config}`);
   } else if (command === "doctor") {
     const config = loadConfig();
     verifyBinary(config.codexBinary ?? paths.binary);
@@ -235,7 +252,9 @@ try {
       `Codex checkpoint: compatible\nProvider: ${config.provider}\nCredential: ${key ? "present" : "not configured (local service)"}\nConfig: ${paths.config}`,
     );
     if (options.probe) {
-      const decision = await new Jev({
+      const decision = await new (config.provider === "responses"
+        ? ResponsesEvaluator
+        : Jev)({
         apiKey: key,
         provider: config.provider,
         baseUrl: config.baseUrl,
